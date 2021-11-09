@@ -65,10 +65,23 @@ check_na_per_column(df_imputed)
 # original one
 df_imputed <- df_simulated
 
-how_many_na <- sum(is.na(df_imputed$V1))
+how_many_na <- function(x){
+  sum(is.na(x))
+}
+
+#na_input <- function(x, "y"){
+#  x[is.na(x)] <- r"y"(how_many_na)
+#}
 
 set.seed(789)
-df_imputed$V1[is.na(df_imputed$V1)] <- runif(how_many_na)
+df_imputed$V1[is.na(df_imputed$V1)] <- runif(how_many_na(df_imputed$V1))
+df_imputed$V2[is.na(df_imputed$V2)] <- rnorm(how_many_na(df_imputed$V2))
+df_imputed$V3[is.na(df_imputed$V3)] <- rnorm(how_many_na(df_imputed$V3),100,10)
+df_imputed$V4[is.na(df_imputed$V4)] <- rpois(how_many_na(df_imputed$V4),10)
+df_imputed$V5[is.na(df_imputed$V5)] <- rnorm(how_many_na(df_imputed$V5))
+
+
+
 
 check_na_per_column(df_imputed)
 
