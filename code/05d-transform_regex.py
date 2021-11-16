@@ -14,6 +14,14 @@ import re
 
 # all mentions
 re.findall(r'@\w+', tweet)
+# Hashtag
+re.findall(r'#\w+', tweet)
+# URL
+re.findall(r'http[A-z0-9:./\-]+', tweet)
+# URL hasta el punto
+re.findall(r'http[A-z0-9:./]+.com', tweet)
+
+
 
 # + The `r` is recommendable when working with strings that include `'\'`.
 # + The at symbol just represents the beginning of the user name --nothing to do with regex.
@@ -31,7 +39,7 @@ re.findall(r'http[A-z0-9:./\-]+', tweet)
 re.findall(r'\s[A-Z][a-z]*', tweet)
 
 # valid passwords
-passwords = ['Apple34!rose', 'My87hou#4$', 'abc123']
+passwords = ['Apple34!rose', 'My87hou#4$', 'abc123', 'aaaaaaaaaaaa']
 
 regex = r"[A-Za-z0-9!#%&*\$\.]{8,20}" 
 for example in passwords:

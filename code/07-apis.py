@@ -2,7 +2,7 @@ import requests
 r = requests.get('https://servicios.ine.es/wstempus/js/ES/DATOS_SERIE/IPC206446?date=20210101:20210801')
 r.status_code
 
-import pprint
+import pprint #Ayuda a visualizar json
 pprint.pprint(r.json())
 
 type(r.json())
@@ -17,8 +17,9 @@ reduced_data = map(lambda x: (x['Anyo'], x['FK_Periodo'], x['Valor']), r.json()[
 df_ipc=pd.DataFrame(reduced_data, columns=['year', 'month', 'value'])
 df_ipc.head()
 
-# YahooFinancials -----------------------------------------------
 
+# YahooFinancials -----------------------------------------------
+import matplotlib as plt
 from yahoofinancials import YahooFinancials
 from datetime import date
 
