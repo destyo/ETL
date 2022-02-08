@@ -1,0 +1,172 @@
+---
+title: "CUNEF ETL - Assessment"
+author: "Antonio Tello Gómez"
+date: 2 de Diciembre de 2021
+output:
+  github_document:
+    toc: true
+---
+# Introducción
+
+Trabajo final de *Extracción, Transformación y Carga*. MUCD 2021/2022.
+A partir de una base de datos con información sobre alojamientos de Airbnb en Madrid. La tarea consiste en extraer parte de esos datos, construir nuevas tablas transformándolos con ciertas directrices y subirlas de nuevo a la base de datos.
+**Objetivo**: Construir dos tablas:  
+**Tabla 1.** Evolución mensual del número de críticas por distrito, con predicción para el mes siguiente.  
+**Tabla 2.** Distribución del tipo de alojamiento por distrito. Incluyendo nota media ponderada precio mediano. 
+
+```{r Librerias, message=FALSE, warning=FALSE}
+#Librerías
+library(tidyverse)
+library(stringr)
+```
+
+# Extract
+```{r}
+#Conexión a la base de datos
+conn <- DBI::dbConnect(RSQLite::SQLite(), "airbnb.sqlite")
+
+#Tablas en la base de datos
+DBI::dbListTables(conn)
+```
+
+## 1. Extracción (listings).
+```{r}
+#Query de SQL para hacer la extracción
+first_query <- "SELECT L.price, L.number_of_reviews, L.room_type, 
+L.review_scores_rating, H.neighbourhood_group AS district
+FROM Listings AS L
+INNER JOIN Hoods AS H
+ON L.neighbourhood_cleansed=H.neighbourhood"
+#DataFrame con la información extraída
+listings <- collect(tbl(conn, sql(first_query)))
+glimpse(listings)
+```
+
+## 2. Extracción (reviews).
+```{r}
+#Query de SQL para hacer la extracción
+second_query <- "SELECT COUNT(Reviews.id) AS reviews_number,
+Hoods.neighbourhood_group AS district, strftime('%Y-%m', Reviews.date) AS mes
+FROM Reviews
+INNER JOIN Listings
+ON Listings.id=Reviews.listing_id
+INNER JOIN Hoods
+ON Listings.neighbourhood_cleansed=Hoods.neighbourhood
+WHERE strftime('%Y', Reviews.date) NOT LIKE '2010'
+GROUP BY district, mes"
+#DataFrame con la información extraída
+reviews <- collect(tbl(conn, sql(second_query)))
+glimpse(reviews)
+```
+
+
+# Transform
+
+## 3. Transformación (listings).
+```{r}
+#Transformación del precio a númerico eliminando
+#el $ y la coma
+listings <- listings %>% 
+  mutate(price = as.numeric(str_remove_all(price, "[,//$]")))
+typeof(listings$price)
+```
+
+## 4. Transformación (listings).
+**Opción B**
+```{r}
+#Para Number of Reviews
+
+#Iteramos por las filas del df
+for (i in 1:nrow(listings)) {
+  # Condición para quedarnos con aquellas que contienen NA
+  if (is.na(listings$number_of_reviews[[i]])) {
+    # room_type para cada elemento NA
+    rt <- listings$room_type[[i]]
+    # Imputar valor aleatorio correspondiente a cada NA 
+    #evitando que sea a su vez NA
+    listings$number_of_reviews[[i]] <- 
+      sample(na.omit(listings$number_of_reviews[listings$room_type==rt]),size=1)
+    }
+}
+#Comprobamos que no quedan NAs
+sum(is.na(listings$number_of_reviews))
+```
+
+```{r}
+#Review_scores_rating
+for (i in 1:nrow(listings)) {
+  if (is.na(listings$review_scores_rating[[i]])) {
+    rt <- listings$room_type[[i]]
+    listings$review_scores_rating[[i]] <- 
+      sample(na.omit(listings$review_scores_rating[listings$room_type==rt]),size=1)
+  }
+}
+sum(is.na(listings$review_scores_rating))
+```
+
+## 5. Transformación (listings).
+
+```{r}
+#Tabla con nota media ponderada y precio mediano
+#agrupada por distrito  tipo de alojamiento
+tabla1 <- listings %>% 
+  group_by(district,room_type) %>% 
+  summarise(wh_avg_review = weighted.mean(review_scores_rating,number_of_reviews),
+            median_price = median(price))
+tabla1
+```
+
+## 6. Transformación (reviews).
+
+```{r}
+#Predicción para agosto con valores de julio
+reviews_prediction <- reviews %>% 
+  select(everything()) %>% 
+  filter(mes == '2021-07') %>% 
+  mutate(mes = '2021-08')
+
+#Combinamos predicciones con la tabla orginal
+reviews <- reviews %>% 
+  bind_rows(reviews_prediction) %>% 
+  arrange(district,mes)
+tail(reviews)
+```
+
+## 7. Transformación (reviews). 
+
+```{r}
+#df con todas las posibles combinaciones de fechas con distritos
+df <- tibble(expand.grid(district = unique(reviews$district), 
+                 mes = substring(seq(as.Date("2011-01-01"),
+                                     as.Date("2021-08-01"),
+                                     by="months"), 1, 7)))
+
+#join de ambos df para añadir combinaciones que faltaban
+reviews_wpred <- reviews %>% 
+  full_join(df) %>% 
+  arrange(district,mes) %>% 
+  #convertimos los NAs que acabamos de introducir en 0
+  mutate(reviews_number = ifelse(is.na(reviews_number), 0, reviews_number))
+reviews_wpred
+```
+
+
+# Load 
+
+## 8. Carga 
+```{r}
+#Subimos tabla de Reviews con predicciones a la base de datos
+RSQLite::dbWriteTable(conn, "Reviews_wpred", reviews_wpred)
+collect(tbl(conn, sql("SELECT * FROM Reviews_wpred LIMIT 10")))
+
+#Subimos tabla de resumen de Listings a la base de datos
+RSQLite::dbWriteTable(conn, "Listings_summary", tabla1)
+collect(tbl(conn, sql( "SELECT * FROM Listings_summary LIMIT 10")))
+
+```
+```{r}
+#Desconexión de la base de datos
+RSQLite::dbDisconnect(conn)
+```
+
+
